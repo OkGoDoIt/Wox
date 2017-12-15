@@ -1,5 +1,5 @@
 ﻿using NUnit.Framework;
-using Wox.Plugin.Url;
+using Wox.Plugin.UrlNew;
 
 namespace Wox.Test
 {
