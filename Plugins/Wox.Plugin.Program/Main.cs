@@ -17,12 +17,17 @@ namespace Wox.Plugin.Program
     {
         private static readonly object IndexLock = new object();
         private static Win32[] _win32s;
-        private static UWP.Application[] _uwps;
+#if UWP
+		private static UWP.Application[] _uwps;
+#endif
 
         private static PluginInitContext _context;
 
         private static BinaryStorage<Win32[]> _win32Storage;
+#if UWP
         private static BinaryStorage<UWP.Application[]> _uwpStorage;
+#endif
+
         private static Settings _settings;
         private readonly PluginJsonStorage<Settings> _settingsStorage;
 
@@ -35,11 +40,15 @@ namespace Wox.Plugin.Program
             {
                 _win32Storage = new BinaryStorage<Win32[]>("Win32");
                 _win32s = _win32Storage.TryLoad(new Win32[] { });
+#if UWP
                 _uwpStorage = new BinaryStorage<UWP.Application[]>("UWP");
                 _uwps = _uwpStorage.TryLoad(new UWP.Application[] { });
-            });
+	            Log.Info($"|Wox.Plugin.Program.Main|Number of preload uwps <{_uwps.Length}>");
+
+#endif
+
+			});
             Log.Info($"|Wox.Plugin.Program.Main|Number of preload win32 programs <{_win32s.Length}>");
-            Log.Info($"|Wox.Plugin.Program.Main|Number of preload uwps <{_uwps.Length}>");
             Task.Run(() =>
             {
                 Stopwatch.Normal("|Wox.Plugin.Program.Main|Program index cost", IndexPrograms);
@@ -50,17 +59,24 @@ namespace Wox.Plugin.Program
         {
             _settingsStorage.Save();
             _win32Storage.Save(_win32s);
+#if UWP
             _uwpStorage.Save(_uwps);
-        }
+#endif
+		}
 
-        public List<Result> Query(Query query)
+		public List<Result> Query(Query query)
         {
             lock (IndexLock)
             {
                 var results1 = _win32s.AsParallel().Select(p => p.Result(query.Search, _context.API));
+#if UWP
                 var results2 = _uwps.AsParallel().Select(p => p.Result(query.Search, _context.API));
-                var result = results1.Concat(results2).Where(r => r.Score > 0).ToList();
-                return result;
+				var result = results1.Concat(results2).Where(r => r.Score > 0).ToList();
+#else
+				var result = results1.Where(r => r.Score > 0).ToList();
+#endif
+
+				return result;
             }
         }
 
@@ -72,13 +88,16 @@ namespace Wox.Plugin.Program
         public static void IndexPrograms()
         {
             Win32[] w = { };
+#if UWP
             UWP.Application[] u = { };
+#endif
             var t1 = Task.Run(() =>
             {
                 w = Win32.All(_settings);
             });
             var t2 = Task.Run(() =>
             {
+#if UWP
                 var windows10 = new Version(10, 0);
                 var support = Environment.OSVersion.Version.Major >= windows10.Major;
                 if (support)
@@ -89,14 +108,17 @@ namespace Wox.Plugin.Program
                 {
                     u = new UWP.Application[] { };
                 }
+#endif
             });
             Task.WaitAll(t1, t2);
 
             lock (IndexLock)
             {
                 _win32s = w;
-                _uwps = u;
-            }
+#if UWP
+				_uwps = u;
+#endif
+			}
         }
 
         public Control CreateSettingPanel()
